@@ -127,6 +127,14 @@ struct TopScore top_n_webpages(double *x_k, double *sorted_x, int *node_ID, int 
         x_k_node_ID[i] = i;
     }
 
+    /*for (int i = 0; i < nodes; i++)
+    {
+        if (i != x_k_node_ID[i])
+        {
+            printf("i = %d \n", x_k_node_ID[i]);
+        }
+    }*/
+
     sortScore(x_k, x_k_node_ID, 0, nodes, nodes);
 
     int teller = 0;
@@ -135,10 +143,25 @@ struct TopScore top_n_webpages(double *x_k, double *sorted_x, int *node_ID, int 
     //#pragma omp parallel for private(i) shared(j, x_k, x_k_node_ID) //, sorted_x,node_ID) // ordered private(i) shared (j)
     for (i = nodes; i >= nodes - n; i--)
     {
+        //printf("i = %d score %f \n", i, x_k[i]);
         sorted_x[j] = x_k[i];
+        //printf("i = %d score %f \n", i, sorted_x[j]);
         node_ID[j] = x_k_node_ID[i];
+        //printf("j = %d node %d \n", j, node_ID[j]);
+        //teller++;
+        //printf("teller %d \n", teller);
         j++;
     }
+
+    //printf("i= %d \n", i);
+
+    /*#pragma omp parallel for private(i) shared(x_k, x_k_node_ID,sorted_x,node_ID)//schedule(static) //  //  if (n>200000)//private(i)
+    for (i = nodes; i > nodes - n - 1; i--)
+    {
+        //#pragma omp atomic
+        sorted_x[i - nodes] = x_k[i];
+        node_ID[i - nodes] = x_k_node_ID[i];
+    }*/
 
     TopScore score = {sorted_x, node_ID};
 
@@ -244,7 +267,13 @@ struct CRS_data read_graph_from_file(int *arr_row_ptr, int *arr_col, double *arr
 
     FILE *fp;
 
+    //fp = fopen("test2.txt", "r");
+    //fp = fopen("test100.txt", "r");
     fp = fopen(filename, "r");
+
+    //fp = fopen("test2unorganized.txt", "r");
+
+    //fp = fopen("web-NotreDame.txt", "r");
 
     int n = 0; //100;
     char line[128];
@@ -303,11 +332,18 @@ struct CRS_data read_graph_from_file(int *arr_row_ptr, int *arr_col, double *arr
 
     int m;
 
+    //for (int i = 1; i < nodes + 1; i++)
     for (int i = 0; i < nodes; i++)
+
     {
+        //m = arr_row_ptr[i] - arr_row_ptr[i - 1];
+        //m = col_nr[i-1];
         m = col_nr[i];
+        //printf("m = %d", m);
+
         if (m == 0)
         {
+            //dangling_nodes[i - 1] = 1;
             dangling_nodes[i] = 1;
             //printf("%d \n", i);
         }
@@ -335,7 +371,14 @@ struct CRS_data read_graph_from_file(int *arr_row_ptr, int *arr_col, double *arr
         row_nr[i] = 0;
     }
 
+    //fp = fopen("web-NotreDame.txt", "r");
+    //fp = fopen("test100.txt", "r");
     fp = fopen(filename, "r");
+
+    //fp = fopen("test2unorganized.txt", "r");
+
+    //
+    //fp = fopen("test2.txt", "r");
 
     if (fp == NULL)
     {
@@ -369,6 +412,7 @@ struct CRS_data read_graph_from_file(int *arr_row_ptr, int *arr_col, double *arr
                 else if (from > arr_col[index_CRS - 1])
                 {
                     //printf("%d %d \n", from, to);
+
                     arr_col[index_CRS] = from;
                     arr_val[index_CRS] = 1.0 / col_nr[from];
                 }
@@ -376,12 +420,15 @@ struct CRS_data read_graph_from_file(int *arr_row_ptr, int *arr_col, double *arr
                 {
                     for (int col = 1; col <= row_nr[to]; col++)
                     {
+
                         //printf("%d %d \n", from, col);
+
                         if (arr_col[index_CRS - col] < from)
                         {
                             //printf("%d %d \n", row_nr[to], i);
                             funnet = col;
                             //printf(" %d \n", funnet);
+
                             break;
                         }
                         if (arr_col[index_CRS - row_nr[to]] > from)
@@ -465,25 +512,33 @@ struct PageRank PageRank_Iterations(double *x_k, int *arr_row_ptr, int *arr_col,
         link += r;
     }
 
+    //eps = 0.000001;
+
     _Bool iterate = 1;
 
     double stopping;
 
     int iterations = 0;
+    //int j ;
     int l;
 
-#pragma omp parallel private(x_0, x_k)
+#pragma omp parallel shared(x_0, x_k,iterations)
     {
         while (iterate)
         {
-            iterate = 0;
-            stopping = StoppingCriterion(eps, x_0, x_k, nodes);
-
+//iterate = 0;
+//#pragma omp atomic read
+#pragma omp critical //private(x_0,x_k)
+            {
+                stopping = StoppingCriterion(eps, x_0, x_k, nodes);
+            }
             if (stopping < eps)
             {
+                iterate = 0;
                 printf("PageRank score found, k=%d \n", iterations);
+#pragma omp flush(iterate)
+                //break;
             }
-
             else
             {
                 link = 0;
@@ -498,6 +553,7 @@ struct PageRank PageRank_Iterations(double *x_k, int *arr_row_ptr, int *arr_col,
 
                 w = dangling_nodes_W(dangling_nodes, x_0, nodes);
                 scalar_w = x_0_start_value * (b + (d * w));
+
 #pragma omp for private(z, j) //shared(link, r) //reduction(+ \
                                                          //  : z) //if (r>1000000)
                 for (int p = 1; p < nodes + 1; p++)
@@ -511,12 +567,15 @@ struct PageRank PageRank_Iterations(double *x_k, int *arr_row_ptr, int *arr_col,
                         z += arr_val[j] * x_0[arr_col[j]];
                     }
                     //z =  findAx_k(arr_val, x_0, arr_col,  link, r);
+                    //x_k[p - 1] = (x_0_start_value * (b + (d * w))) + d * z;
+
                     x_k[p - 1] = scalar_w + d * z;
                     //
                     //z=0;
                     link += r;
                 }
             }
+#pragma omp critical
             iterations++;
         }
     }
